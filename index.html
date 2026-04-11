@@ -23,22 +23,30 @@
     /* ===== HEADER ===== */
     .header {
       background: linear-gradient(135deg, #1e3a5f, #0f2744);
-      padding: 12px 20px;
+      padding: 10px 20px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      border-bottom: 2px solid #3b82f6;
+      border-bottom: 2px solid #e4032e;
       flex-shrink: 0;
     }
     .header-left { display: flex; align-items: center; gap: 12px; }
     .header-logo {
-      width: 40px; height: 40px;
-      background: #3b82f6;
-      border-radius: 10px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 20px;
+      height: 36px;
+      display: flex;
+      align-items: center;
     }
-    .header-title h1 { font-size: 16px; font-weight: 700; color: #fff; }
+    .header-logo img {
+      height: 36px;
+      width: auto;
+      object-fit: contain;
+    }
+    .header-divider {
+      width: 1px;
+      height: 30px;
+      background: #334155;
+    }
+    .header-title h1 { font-size: 15px; font-weight: 700; color: #fff; }
     .header-title p  { font-size: 11px; color: #94a3b8; }
     .header-right { display: flex; align-items: center; gap: 10px; }
 
@@ -68,6 +76,35 @@
     }
     #refresh-btn:hover { background: #2563eb; }
     #refresh-btn.loading { opacity: 0.6; pointer-events: none; }
+
+    /* Toggle layer */
+    .layer-toggle {
+      display: flex;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .layer-btn {
+      padding: 5px 12px;
+      border: none;
+      background: transparent;
+      color: #94a3b8;
+      font-size: 11px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.2s;
+    }
+    .layer-btn.active {
+      background: #3b82f6;
+      color: #fff;
+    }
+    .layer-btn:hover:not(.active) {
+      background: #334155;
+      color: #fff;
+    }
 
     /* ===== MAIN CONTENT ===== */
     .main {
@@ -250,13 +287,30 @@
 <!-- HEADER -->
 <div class="header">
   <div class="header-left">
-    <div class="header-logo">📍</div>
+    <div class="header-logo">
+      <!-- Logo IndiHome via CDN resmi Telkom -->
+      <img
+        src="https://upload.wikimedia.org/wikipedia/commons/thumb/3/thirty/IndiHome_logo.svg/320px-IndiHome_logo.svg.png"
+        alt="IndiHome"
+        onerror="this.onerror=null;this.src='';this.parentElement.innerHTML='<svg width=\'120\' height=\'36\' viewBox=\'0 0 120 36\'><rect width=\'120\' height=\'36\' rx=\'6\' fill=\'#e4032e\'/><text x=\'60\' y=\'24\' text-anchor=\'middle\' fill=\'white\' font-size=\'14\' font-weight=\'bold\' font-family=\'Segoe UI\'>IndiHome</text></svg>'"
+      >
+    </div>
+    <div class="header-divider"></div>
     <div class="header-title">
       <h1 id="witel-name">SF Tracking Map</h1>
       <p id="tanggal-hari"></p>
     </div>
   </div>
   <div class="header-right">
+    <!-- Toggle Layer Peta -->
+    <div class="layer-toggle">
+      <button class="layer-btn active" id="btn-street" onclick="setLayer('street')">
+        🗺️ Peta
+      </button>
+      <button class="layer-btn" id="btn-satellite" onclick="setLayer('satellite')">
+        🛰️ Satelit
+      </button>
+    </div>
     <span class="badge badge-green" id="badge-hadir">0 Hadir</span>
     <span class="badge badge-blue"  id="badge-total">0 SF</span>
     <span id="last-update">–</span>
@@ -323,8 +377,8 @@
 // KONFIGURASI — EDIT BAGIAN INI
 // ============================================================
 const CONFIG = {
-  apiUrl : 'https://script.google.com/macros/s/AKfycbzu20_TCRKiOL5jINtBTPnmwgXSK2iFPRCZp1-axt509pH2RFziXuQRlCYXyASMpGyu/exec',
-  apiKey : 'indihomelpg26',
+  apiUrl : 'GANTI_DENGAN_URL_DEPLOYMENT_APPS_SCRIPT',
+  apiKey : 'GANTI_DENGAN_MAP_API_KEY',
   // Auto refresh setiap 5 menit
   refreshInterval: 5 * 60 * 1000,
   // Koordinat center peta awal (sesuaikan dengan wilayah)
@@ -341,11 +395,55 @@ const map = L.map('map', {
   zoomControl: true,
 });
 
-// Tile layer OpenStreetMap
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  attribution: '© OpenStreetMap contributors',
-  maxZoom: 19,
-}).addTo(map);
+// ============================================================
+// TILE LAYERS
+// ============================================================
+const layers = {
+  street: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors',
+    maxZoom: 19,
+  }),
+  satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '© Esri, Maxar, Earthstar Geographics',
+    maxZoom: 19,
+  }),
+  satelliteLabel: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '',
+    maxZoom: 19,
+    opacity: 0.7,
+  }),
+};
+
+// Layer aktif saat ini
+let currentLayer = 'street';
+layers.street.addTo(map);
+
+// Fungsi toggle layer
+function setLayer(type) {
+  if (type === currentLayer) return;
+
+  // Hapus layer lama
+  if (currentLayer === 'street') {
+    map.removeLayer(layers.street);
+  } else {
+    map.removeLayer(layers.satellite);
+    map.removeLayer(layers.satelliteLabel);
+  }
+
+  // Tambah layer baru
+  if (type === 'street') {
+    layers.street.addTo(map);
+  } else {
+    layers.satellite.addTo(map);
+    layers.satelliteLabel.addTo(map); // label nama jalan di atas satelit
+  }
+
+  currentLayer = type;
+
+  // Update tombol aktif
+  document.getElementById('btn-street').classList.toggle('active', type === 'street');
+  document.getElementById('btn-satellite').classList.toggle('active', type === 'satellite');
+}
 
 // ============================================================
 // STATE
